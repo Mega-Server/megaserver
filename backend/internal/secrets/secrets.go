@@ -1,4 +1,4 @@
-package api
+package secrets
 
 import (
 	"fmt"
@@ -19,11 +19,9 @@ type SecretManager interface {
 	GetSecret(key SecretType) (string, error)
 }
 
-func NewSecretManager() SecretManager {
+func NewSecretManager(keyMap map[SecretType]string) SecretManager {
 	return &secretManagerImpl{
-		keyMap: map[SecretType]string{
-			Clerk: "CLERK_SECRET_KEY",
-		},
+		keyMap: keyMap,
 	}
 }
 
