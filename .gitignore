@@ -95,3 +95,8 @@ out/
 .output
 
 .env.local
+
+# terraform
+*.tfstate
+*.tfstate.backup
+.terraform*
