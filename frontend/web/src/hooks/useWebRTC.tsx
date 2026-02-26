@@ -1,118 +1,159 @@
-import { useEffect, useRef, useCallback } from "react";
+import type { SignalingMessage } from "@/types/message";
+import { useEffect, useRef, useCallback, useState } from "react";
 
 interface UseWebRTCOptions {
   roomId: string;
   signalingUrl: string;
 }
 
+interface PeerState {
+  pc: RTCPeerConnection;
+  stream: MediaStream | null;
+}
+
 export function useWebRTC(
   localVideoRef: React.RefObject<HTMLVideoElement | null>,
-  remoteVideoRef: React.RefObject<HTMLVideoElement | null>,
   { roomId, signalingUrl }: UseWebRTCOptions,
 ) {
-  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const peersRef = useRef<Map<string, PeerState>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const clearRemoteVideo = useCallback(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-  }, [remoteVideoRef]);
+  // Reactive state so the component re-renders when remote streams change
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(
+    new Map(),
+  );
 
-  const closePeer = useCallback(() => {
-    clearRemoteVideo();
-    peerRef.current?.close();
-    peerRef.current = null;
-  }, [clearRemoteVideo]);
-
-  const createPeer = useCallback((): RTCPeerConnection => {
-    const peer = new RTCPeerConnection({
-      iceServers: [
-        {
-          urls: [
-            "stun:stun1.l.google.com:19302",
-            "stun:stun2.l.google.com:19302",
-          ],
-        },
-      ],
-      iceCandidatePoolSize: 10,
+  const updateRemoteStreams = useCallback(() => {
+    const streams = new Map<string, MediaStream>();
+    peersRef.current.forEach((peer, peerId) => {
+      if (peer.stream) {
+        streams.set(peerId, peer.stream);
+      }
     });
+    setRemoteStreams(new Map(streams));
+  }, []);
 
-    peer.ontrack = (e) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = e.streams[0];
+  const removePeer = useCallback(
+    (peerId: string) => {
+      const peer = peersRef.current.get(peerId);
+      if (peer) {
+        peer.pc.close();
+        peersRef.current.delete(peerId);
+        updateRemoteStreams();
       }
-    };
+    },
+    [updateRemoteStreams],
+  );
 
-    peer.onicecandidate = (e) => {
-      if (e.candidate) {
-        wsRef.current?.send(JSON.stringify({ iceCandidate: e.candidate }));
-      }
-    };
-
-    peer.oniceconnectionstatechange = () => {
-      if (
-        peer.iceConnectionState === "disconnected" ||
-        peer.iceConnectionState === "failed" ||
-        peer.iceConnectionState === "closed"
-      ) {
-        closePeer();
-      }
-    };
-
-    peer.onconnectionstatechange = () => {
-      if (
-        peer.connectionState === "disconnected" ||
-        peer.connectionState === "failed" ||
-        peer.connectionState === "closed"
-      ) {
-        closePeer();
-      }
-    };
-
-    peer.onnegotiationneeded = async () => {
-      try {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        wsRef.current?.send(JSON.stringify({ offer: peer.localDescription }));
-      } catch (err) {
-        console.error("Negotiation error", err);
-      }
-    };
-
-    return peer;
-  }, [remoteVideoRef, closePeer]);
-
-  const handleOffer = useCallback(
-    async (offer: RTCSessionDescriptionInit) => {
-      peerRef.current = createPeer();
-
-      await peerRef.current.setRemoteDescription(
-        new RTCSessionDescription(offer),
-      );
-
-      localStreamRef.current?.getTracks().forEach((track) => {
-        peerRef.current!.addTrack(track, localStreamRef.current!);
+  const createPeer = useCallback(
+    (peerId: string) => {
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          {
+            urls: [
+              "stun:stun1.l.google.com:19302",
+              "stun:stun2.l.google.com:19302",
+            ],
+          },
+        ],
+        iceCandidatePoolSize: 10,
       });
 
-      const answer = await peerRef.current.createAnswer();
-      await peerRef.current.setLocalDescription(answer);
+      const peerState: PeerState = { pc, stream: null };
+      peersRef.current.set(peerId, peerState);
+
+      pc.ontrack = (e) => {
+        peerState.stream = e.streams[0];
+        updateRemoteStreams();
+      };
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          wsRef.current?.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              peerId,
+              iceCandidate: e.candidate,
+            }),
+          );
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (
+          pc.iceConnectionState === "disconnected" ||
+          pc.iceConnectionState === "failed" ||
+          pc.iceConnectionState === "closed"
+        ) {
+          removePeer(peerId);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (
+          pc.connectionState === "disconnected" ||
+          pc.connectionState === "failed" ||
+          pc.connectionState === "closed"
+        ) {
+          removePeer(peerId);
+        }
+      };
+
+      pc.onnegotiationneeded = async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          wsRef.current?.send(
+            JSON.stringify({
+              type: "offer",
+              peerId,
+              offer: pc.localDescription,
+            }),
+          );
+        } catch (err) {
+          console.error("Negotiation error", err);
+        }
+      };
+
+      return pc;
+    },
+    [updateRemoteStreams, removePeer],
+  );
+
+  const handleOffer = useCallback(
+    async (peerId: string, offer: RTCSessionDescriptionInit) => {
+      // If we already have a connection to this peer, close it first
+      removePeer(peerId);
+
+      const pc = createPeer(peerId);
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+      localStreamRef.current?.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
       wsRef.current?.send(
-        JSON.stringify({ answer: peerRef.current.localDescription }),
+        JSON.stringify({ type: "answer", peerId, answer: pc.localDescription }),
       );
+    },
+    [createPeer, removePeer],
+  );
+
+  const callPeer = useCallback(
+    (peerId: string) => {
+      const pc = createPeer(peerId);
+
+      localStreamRef.current?.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
     },
     [createPeer],
   );
-
-  const callUser = useCallback(() => {
-    peerRef.current = createPeer();
-
-    localStreamRef.current?.getTracks().forEach((track) => {
-      peerRef.current!.addTrack(track, localStreamRef.current!);
-    });
-  }, [createPeer, clearRemoteVideo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,36 +180,55 @@ export function useWebRTC(
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ join: true }));
+        ws.send(JSON.stringify({ type: "join" }));
       };
 
       ws.onmessage = async (e) => {
-        const message = JSON.parse(e.data);
+        const message: SignalingMessage = JSON.parse(e.data);
 
-        if (message.join) {
-          callUser();
-        }
+        switch (message.type) {
+          case "peer-joined":
+            callPeer(message.peerId);
+            break;
 
-        if (message.leave) {
-          closePeer();
-        }
+          case "peers-list":
+            for (const peerId of message.peers) {
+              callPeer(peerId);
+            }
+            break;
 
-        if (message.offer) {
-          await handleOffer(message.offer);
-        }
+          case "peer-left":
+            removePeer(message.peerId);
+            break;
 
-        if (message.answer) {
-          await peerRef.current?.setRemoteDescription(
-            new RTCSessionDescription(message.answer),
-          );
-        }
+          case "offer":
+            await handleOffer(message.peerId, message.offer);
+            break;
 
-        if (message.iceCandidate) {
-          try {
-            await peerRef.current?.addIceCandidate(message.iceCandidate);
-          } catch (err) {
-            console.error("ICE candidate error:", err);
+          case "answer": {
+            const peer = peersRef.current.get(message.peerId);
+            if (peer) {
+              await peer.pc.setRemoteDescription(
+                new RTCSessionDescription(message.answer),
+              );
+            }
+            break;
           }
+
+          case "ice-candidate": {
+            const peer = peersRef.current.get(message.peerId);
+            if (peer) {
+              try {
+                await peer.pc.addIceCandidate(message.iceCandidate);
+              } catch (err) {
+                console.error("ICE candidate error:", err);
+              }
+            }
+            break;
+          }
+
+          default:
+            console.warn("Unknown signaling message:", message);
         }
       };
 
@@ -179,13 +239,15 @@ export function useWebRTC(
 
     return () => {
       cancelled = true;
-      wsRef.current?.send(JSON.stringify({ leave: true }));
+      wsRef.current?.send(JSON.stringify({ type: "leave" }));
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
-      peerRef.current?.close();
+      peersRef.current.forEach((peer) => peer.pc.close());
+      peersRef.current.clear();
       wsRef.current?.close();
-      peerRef.current = null;
       wsRef.current = null;
       localStreamRef.current = null;
     };
-  }, [roomId, signalingUrl, callUser, handleOffer, closePeer, localVideoRef]);
+  }, [roomId, signalingUrl, callPeer, handleOffer, removePeer, localVideoRef]);
+
+  return { remoteStreams };
 }

@@ -1,3 +1,5 @@
+import LocalVideo from "@/components/video/LocalVideo";
+import RemoteVideo from "@/components/video/RemoteVideo";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
@@ -10,9 +12,8 @@ function RouteComponent() {
   const { roomId } = Route.useParams();
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  useWebRTC(localVideoRef, remoteVideoRef, {
+  const { remoteStreams } = useWebRTC(localVideoRef, {
     roomId,
     signalingUrl: "ws://localhost:4000/join",
   });
@@ -20,9 +21,11 @@ function RouteComponent() {
   return (
     <div>
       <span>Room: {roomId}</span>
-      <div className="flex justify-center items-center top-25 right-25 rounded-md overflow-hidden">
-        <video playsInline autoPlay muted ref={localVideoRef} />
-        <video playsInline autoPlay ref={remoteVideoRef} />
+      <div className="flex flex-wrap justify-center items-center gap-4 rounded-md overflow-hidden">
+        <LocalVideo videoRef={localVideoRef} />
+        {[...remoteStreams.entries()].map(([peerId, stream]) => (
+          <RemoteVideo key={peerId} stream={stream} />
+        ))}
       </div>
     </div>
   );

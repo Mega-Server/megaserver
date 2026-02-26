@@ -48,7 +48,8 @@ func (app *application) serve() error {
 		shutdownError <- nil
 	}()
 
-	app.background(func() { app.broadcaster() })
+	// TODO this could potentially be removed entirely
+	// app.background(func() { app.broadcaster() })
 
 	AllRooms.Init()
 

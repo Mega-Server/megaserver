@@ -21,7 +21,7 @@ func (app *application) createRoomRequestHandler(w http.ResponseWriter, r *http.
 		RoomID string `json:"room_id"`
 	}
 
-	app.logger.Info("all rooms: ", AllRooms.Map)
+	app.logger.Info("room created", "roomID", roomID)
 	json.NewEncoder(w).Encode(resp{RoomID: roomID})
 }
 
@@ -65,6 +65,23 @@ func removeConnMu(conn *websocket.Conn) {
 	delete(connMu, conn)
 }
 
+// sendJSON safely writes a JSON message to a connection with mutex protection.
+func sendJSON(conn *websocket.Conn, msg any) error {
+	mu := getConnMu(conn)
+	mu.Lock()
+	defer mu.Unlock()
+	return conn.WriteJSON(msg)
+}
+
+// signalingMessage represents an incoming message from a client.
+type signalingMessage struct {
+	Type         string           `json:"type"`
+	PeerID       string           `json:"peerId,omitempty"`
+	Offer        *json.RawMessage `json:"offer,omitempty"`
+	Answer       *json.RawMessage `json:"answer,omitempty"`
+	ICECandidate *json.RawMessage `json:"iceCandidate,omitempty"`
+}
+
 func (app *application) broadcaster() {
 	for {
 		select {
@@ -78,23 +95,24 @@ func (app *application) broadcaster() {
 			app.logger.Info("broadcaster shutting down")
 			return
 
-		case msg := <-broadcast:
-			for _, client := range AllRooms.Map[msg.RoomID] {
-				if client.Conn != msg.Client {
-					err := client.Conn.WriteJSON(msg.Message)
-					if err != nil {
-						mu := getConnMu(client.Conn)
-						mu.Lock()
-						err := client.Conn.WriteJSON(msg.Message)
-						mu.Unlock()
-						if err != nil {
-							app.logger.Error(err.Error())
-							client.Conn.Close()
-							removeConnMu(client.Conn)
-						}
-					}
-				}
-			}
+			// TODO this might be able to be removed entirely
+			// case msg := <-broadcast:
+			// for _, client := range AllRooms.Map[msg.RoomID] {
+			// 	if client.Conn != msg.Client {
+			// 		err := client.Conn.WriteJSON(msg.Message)
+			// 		if err != nil {
+			// 			mu := getConnMu(client.Conn)
+			// 			mu.Lock()
+			// 			err := client.Conn.WriteJSON(msg.Message)
+			// 			mu.Unlock()
+			// 			if err != nil {
+			// 				app.logger.Error(err.Error())
+			// 				client.Conn.Close()
+			// 				removeConnMu(client.Conn)
+			// 			}
+			// 		}
+			// 	}
+			// }
 		}
 	}
 }
@@ -115,43 +133,105 @@ func (app *application) joinRoomRequestHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	AllRooms.InsertIntoRoom(roomID[0], false, ws)
+	peerID := rooms.GeneratePeerID()
 
-	defer leave(roomID[0], ws)
+	AllRooms.InsertIntoRoom(roomID[0], peerID, false, ws)
+
+	app.logger.Info("peer joined", "roomID", roomID[0], "peerID", peerID)
+
+	defer app.leave(roomID[0], peerID, ws)
 
 	for {
-		var msg broadcastMsg
+		var msg signalingMessage
 
-		err := ws.ReadJSON(&msg.Message)
+		err := ws.ReadJSON(&msg)
 		if err != nil {
-			// TODO make this a structured error
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
-					app.logger.Info("client disconnected", "roomID", roomID[0])
-				} else {
-					app.logger.Error("Read Error: ", err)
-				}
-				break
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
+				app.logger.Info("client disconnected", "roomID", roomID[0], "peerID", peerID)
+			} else {
+				app.logger.Error("Read Error", "error", err)
 			}
+			break
 		}
 
-		msg.Client = ws
-		msg.RoomID = roomID[0]
+		switch msg.Type {
+		case "join":
+			// Send the joining peer the list of existing peers
+			existingPeers := AllRooms.GetPeerIDs(roomID[0], peerID)
+			sendJSON(ws, map[string]any{
+				"type":  "peers-list",
+				"peers": existingPeers,
+			})
 
-		app.logger.Info("message:", msg.Message)
+			// Notify all existing peers that a new peer joined
+			for _, existingPeerID := range existingPeers {
+				if conn := AllRooms.GetConnByPeerID(roomID[0], existingPeerID); conn != nil {
+					sendJSON(conn, map[string]any{
+						"type":   "peer-joined",
+						"peerId": peerID,
+					})
+				}
+			}
 
-		broadcast <- msg
+		case "leave":
+			return // triggers deferred app.leave()
+
+		case "offer":
+			if msg.Offer != nil && msg.PeerID != "" {
+				if conn := AllRooms.GetConnByPeerID(roomID[0], msg.PeerID); conn != nil {
+					sendJSON(conn, map[string]any{
+						"type":   "offer",
+						"peerId": peerID, // tell the recipient WHO sent the offer
+						"offer":  msg.Offer,
+					})
+				}
+			}
+
+		case "answer":
+			if msg.Answer != nil && msg.PeerID != "" {
+				if conn := AllRooms.GetConnByPeerID(roomID[0], msg.PeerID); conn != nil {
+					sendJSON(conn, map[string]any{
+						"type":   "answer",
+						"peerId": peerID,
+						"answer": msg.Answer,
+					})
+				}
+			}
+
+		case "ice-candidate":
+			if msg.ICECandidate != nil && msg.PeerID != "" {
+				if conn := AllRooms.GetConnByPeerID(roomID[0], msg.PeerID); conn != nil {
+					sendJSON(conn, map[string]any{
+						"type":         "ice-candidate",
+						"peerId":       peerID,
+						"iceCandidate": msg.ICECandidate,
+					})
+				}
+			}
+
+		default:
+			app.logger.Warn("unhandled message type", "type", msg.Type)
+		}
 	}
 }
 
-func leave(roomID string, ws *websocket.Conn) {
-	AllRooms.RemoveFromRoom(roomID, ws)
+func (app *application) leave(roomID, peerID string, ws *websocket.Conn) {
+	removedPeerID := AllRooms.RemoveFromRoom(roomID, ws)
 	removeConnMu(ws)
 	ws.Close()
 
-	broadcast <- broadcastMsg{
-		Message: map[string]any{"leave": true},
-		RoomID:  roomID,
-		Client:  ws,
+	if removedPeerID == "" {
+		removedPeerID = peerID
 	}
+
+	// Notify remaining peers that this peer left
+	participants := AllRooms.Get(roomID)
+	for _, p := range participants {
+		sendJSON(p.Conn, map[string]any{
+			"type":   "peer-left",
+			"peerId": removedPeerID,
+		})
+	}
+
+	app.logger.Info("peer left", "roomID", roomID, "peerID", removedPeerID)
 }
