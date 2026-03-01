@@ -9,25 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as R404RouteImport } from './routes/$404'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as WsIndexRouteImport } from './routes/ws/index'
-import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as RoomRoomIdRouteImport } from './routes/room.$roomId'
 import { Route as DemoClerkRouteImport } from './routes/demo/clerk'
-import { Route as WsRoomRoomIdRouteImport } from './routes/ws/room.$roomId'
 
+const R404Route = R404RouteImport.update({
+  id: '/$404',
+  path: '/$404',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WsIndexRoute = WsIndexRouteImport.update({
-  id: '/ws/',
-  path: '/ws/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
-  id: '/demo/tanstack-query',
-  path: '/demo/tanstack-query',
+const RoomRoomIdRoute = RoomRoomIdRouteImport.update({
+  id: '/room/$roomId',
+  path: '/room/$roomId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoClerkRoute = DemoClerkRouteImport.update({
@@ -35,63 +34,50 @@ const DemoClerkRoute = DemoClerkRouteImport.update({
   path: '/demo/clerk',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WsRoomRoomIdRoute = WsRoomRoomIdRouteImport.update({
-  id: '/ws/room/$roomId',
-  path: '/ws/room/$roomId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$404': typeof R404Route
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws/': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$404': typeof R404Route
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$404': typeof R404Route
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws/': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/demo/clerk'
-    | '/demo/tanstack-query'
-    | '/ws/'
-    | '/ws/room/$roomId'
+  fullPaths: '/' | '/$404' | '/demo/clerk' | '/room/$roomId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/demo/clerk' | '/demo/tanstack-query' | '/ws' | '/ws/room/$roomId'
-  id:
-    | '__root__'
-    | '/'
-    | '/demo/clerk'
-    | '/demo/tanstack-query'
-    | '/ws/'
-    | '/ws/room/$roomId'
+  to: '/' | '/$404' | '/demo/clerk' | '/room/$roomId'
+  id: '__root__' | '/' | '/$404' | '/demo/clerk' | '/room/$roomId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  R404Route: typeof R404Route
   DemoClerkRoute: typeof DemoClerkRoute
-  DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
-  WsIndexRoute: typeof WsIndexRoute
-  WsRoomRoomIdRoute: typeof WsRoomRoomIdRoute
+  RoomRoomIdRoute: typeof RoomRoomIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/$404': {
+      id: '/$404'
+      path: '/$404'
+      fullPath: '/$404'
+      preLoaderRoute: typeof R404RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -99,18 +85,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ws/': {
-      id: '/ws/'
-      path: '/ws'
-      fullPath: '/ws/'
-      preLoaderRoute: typeof WsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/tanstack-query': {
-      id: '/demo/tanstack-query'
-      path: '/demo/tanstack-query'
-      fullPath: '/demo/tanstack-query'
-      preLoaderRoute: typeof DemoTanstackQueryRouteImport
+    '/room/$roomId': {
+      id: '/room/$roomId'
+      path: '/room/$roomId'
+      fullPath: '/room/$roomId'
+      preLoaderRoute: typeof RoomRoomIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/clerk': {
@@ -120,22 +99,14 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoClerkRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ws/room/$roomId': {
-      id: '/ws/room/$roomId'
-      path: '/ws/room/$roomId'
-      fullPath: '/ws/room/$roomId'
-      preLoaderRoute: typeof WsRoomRoomIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  R404Route: R404Route,
   DemoClerkRoute: DemoClerkRoute,
-  DemoTanstackQueryRoute: DemoTanstackQueryRoute,
-  WsIndexRoute: WsIndexRoute,
-  WsRoomRoomIdRoute: WsRoomRoomIdRoute,
+  RoomRoomIdRoute: RoomRoomIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

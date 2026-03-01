@@ -6,8 +6,6 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 
-import Header from "../components/Header";
-
 import ClerkProvider from "../integrations/clerk/provider";
 
 import TanStackQueryProvider from "../integrations/tanstack-query/root-provider";
@@ -43,6 +41,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
     ],
   }),
+  defaultNotFoundComponent: () => (
+    <div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center text-white text-2xl">
+      Page not found
+    </div>
+  ),
   shellComponent: RootDocument,
 });
 
@@ -55,7 +58,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body>
         <ClerkProvider>
           <TanStackQueryProvider>
-            <Header />
+            {/* <Header /> */}
             {children}
             <TanStackDevtools
               config={{
