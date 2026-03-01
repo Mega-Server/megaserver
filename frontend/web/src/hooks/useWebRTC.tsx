@@ -9,6 +9,8 @@ interface UseWebRTCOptions {
 interface PeerState {
   pc: RTCPeerConnection;
   stream: MediaStream | null;
+  makingOffer: boolean;
+  ignoreOffer: boolean;
 }
 
 export function useWebRTC(
@@ -18,6 +20,7 @@ export function useWebRTC(
   const peersRef = useRef<Map<string, PeerState>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const clientIdRef = useRef<string>("");
 
   // Reactive state so the component re-renders when remote streams change
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(
@@ -32,6 +35,12 @@ export function useWebRTC(
       }
     });
     setRemoteStreams(new Map(streams));
+  }, []);
+
+  const addLocalTracks = useCallback((pc: RTCPeerConnection) => {
+    localStreamRef.current?.getTracks().forEach((track) => {
+      pc.addTrack(track, localStreamRef.current!);
+    });
   }, []);
 
   const removePeer = useCallback(
@@ -60,7 +69,12 @@ export function useWebRTC(
         iceCandidatePoolSize: 10,
       });
 
-      const peerState: PeerState = { pc, stream: null };
+      const peerState: PeerState = {
+        pc,
+        stream: null,
+        makingOffer: false,
+        ignoreOffer: false,
+      };
       peersRef.current.set(peerId, peerState);
 
       pc.ontrack = (e) => {
@@ -102,7 +116,9 @@ export function useWebRTC(
 
       pc.onnegotiationneeded = async () => {
         try {
+          peerState.makingOffer = true;
           const offer = await pc.createOffer();
+          if (pc.signalingState !== "stable") return;
           await pc.setLocalDescription(offer);
           wsRef.current?.send(
             JSON.stringify({
@@ -113,6 +129,8 @@ export function useWebRTC(
           );
         } catch (err) {
           console.error("Negotiation error", err);
+        } finally {
+          peerState.makingOffer = false;
         }
       };
 
@@ -123,36 +141,56 @@ export function useWebRTC(
 
   const handleOffer = useCallback(
     async (peerId: string, offer: RTCSessionDescriptionInit) => {
-      // If we already have a connection to this peer, close it first
-      removePeer(peerId);
+      const isPolite = clientIdRef.current > peerId;
+      let peerState = peersRef.current.get(peerId);
 
-      const pc = createPeer(peerId);
+      if (!peerState) {
+        const pc = createPeer(peerId);
+        peerState = peersRef.current.get(peerId)!;
+
+        addLocalTracks(pc);
+      }
+
+      const pc = peerState.pc;
+      const offerCollision =
+        peerState.makingOffer || pc.signalingState !== "stable";
+
+      peerState.ignoreOffer = !isPolite && offerCollision;
+      if (peerState.ignoreOffer) {
+        return;
+      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
-      localStreamRef.current?.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
+      // add tracks if not already added
+      if (pc.getSenders().length === 0) {
+        addLocalTracks(pc);
+      }
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
       wsRef.current?.send(
-        JSON.stringify({ type: "answer", peerId, answer: pc.localDescription }),
+        JSON.stringify({
+          type: "answer",
+          peerId,
+          answer: pc.localDescription,
+        }),
       );
     },
-    [createPeer, removePeer],
+    [createPeer, removePeer, addLocalTracks],
   );
 
   const callPeer = useCallback(
     (peerId: string) => {
+      // only initiate if we haven't already
+      if (peersRef.current.has(peerId)) return;
+
       const pc = createPeer(peerId);
 
-      localStreamRef.current?.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
+      addLocalTracks(pc);
     },
-    [createPeer],
+    [createPeer, addLocalTracks],
   );
 
   useEffect(() => {
@@ -187,13 +225,25 @@ export function useWebRTC(
         const message: SignalingMessage = JSON.parse(e.data);
 
         switch (message.type) {
+          case "client-id":
+            clientIdRef.current = message.clientId;
+            break;
+
           case "peer-joined":
-            callPeer(message.peerId);
+            if (clientIdRef.current < message.peerId) {
+              callPeer(message.peerId);
+            }
             break;
 
           case "peers-list":
+            if (!Array.isArray(message.peers)) {
+              console.warn("peers-list message has invalid peers:", message);
+              break;
+            }
             for (const peerId of message.peers) {
-              callPeer(peerId);
+              if (clientIdRef.current < peerId) {
+                callPeer(peerId);
+              }
             }
             break;
 
@@ -207,17 +257,26 @@ export function useWebRTC(
 
           case "answer": {
             const peer = peersRef.current.get(message.peerId);
-            if (peer) {
-              await peer.pc.setRemoteDescription(
-                new RTCSessionDescription(message.answer),
-              );
+            if (!peer) {
+              console.warn(`Ignoring answer for peer ${message.peerId}.`);
+              break;
             }
+            if (peer.pc.signalingState !== "have-local-offer") {
+              console.warn(
+                `Ignoring answer for peer ${message.peerId} - wrong state: ${peer.pc.signalingState}`,
+              );
+              break;
+            }
+            await peer.pc.setRemoteDescription(
+              new RTCSessionDescription(message.answer),
+            );
+
             break;
           }
 
           case "ice-candidate": {
             const peer = peersRef.current.get(message.peerId);
-            if (peer) {
+            if (peer && peer.pc.remoteDescription) {
               try {
                 await peer.pc.addIceCandidate(message.iceCandidate);
               } catch (err) {
