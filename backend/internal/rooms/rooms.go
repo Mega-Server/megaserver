@@ -76,7 +76,7 @@ func (r *RoomMap) GetPeerIDs(roomID string, exclude string) []string {
 	r.Mutex.RLock()
 	defer r.Mutex.RUnlock()
 
-	var ids []string
+	ids := []string{}
 	for _, p := range r.Map[roomID] {
 		if p.ID != exclude {
 			ids = append(ids, p.ID)
