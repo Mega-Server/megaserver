@@ -6,8 +6,6 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 
-import Header from "../components/Header";
-
 import ClerkProvider from "../integrations/clerk/provider";
 
 import TanStackQueryProvider from "../integrations/tanstack-query/root-provider";
@@ -55,7 +53,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body>
         <ClerkProvider>
           <TanStackQueryProvider>
-            <Header />
+            {/* <Header /> */}
             {children}
             <TanStackDevtools
               config={{

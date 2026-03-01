@@ -10,24 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as WsIndexRouteImport } from './routes/ws/index'
-import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as RoomRoomIdRouteImport } from './routes/room.$roomId'
 import { Route as DemoClerkRouteImport } from './routes/demo/clerk'
-import { Route as WsRoomRoomIdRouteImport } from './routes/ws/room.$roomId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WsIndexRoute = WsIndexRouteImport.update({
-  id: '/ws/',
-  path: '/ws/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
-  id: '/demo/tanstack-query',
-  path: '/demo/tanstack-query',
+const RoomRoomIdRoute = RoomRoomIdRouteImport.update({
+  id: '/room/$roomId',
+  path: '/room/$roomId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoClerkRoute = DemoClerkRouteImport.update({
@@ -35,59 +28,35 @@ const DemoClerkRoute = DemoClerkRouteImport.update({
   path: '/demo/clerk',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WsRoomRoomIdRoute = WsRoomRoomIdRouteImport.update({
-  id: '/ws/room/$roomId',
-  path: '/ws/room/$roomId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws/': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/demo/clerk': typeof DemoClerkRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
-  '/ws/': typeof WsIndexRoute
-  '/ws/room/$roomId': typeof WsRoomRoomIdRoute
+  '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/demo/clerk'
-    | '/demo/tanstack-query'
-    | '/ws/'
-    | '/ws/room/$roomId'
+  fullPaths: '/' | '/demo/clerk' | '/room/$roomId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/demo/clerk' | '/demo/tanstack-query' | '/ws' | '/ws/room/$roomId'
-  id:
-    | '__root__'
-    | '/'
-    | '/demo/clerk'
-    | '/demo/tanstack-query'
-    | '/ws/'
-    | '/ws/room/$roomId'
+  to: '/' | '/demo/clerk' | '/room/$roomId'
+  id: '__root__' | '/' | '/demo/clerk' | '/room/$roomId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DemoClerkRoute: typeof DemoClerkRoute
-  DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
-  WsIndexRoute: typeof WsIndexRoute
-  WsRoomRoomIdRoute: typeof WsRoomRoomIdRoute
+  RoomRoomIdRoute: typeof RoomRoomIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,18 +68,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ws/': {
-      id: '/ws/'
-      path: '/ws'
-      fullPath: '/ws/'
-      preLoaderRoute: typeof WsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/tanstack-query': {
-      id: '/demo/tanstack-query'
-      path: '/demo/tanstack-query'
-      fullPath: '/demo/tanstack-query'
-      preLoaderRoute: typeof DemoTanstackQueryRouteImport
+    '/room/$roomId': {
+      id: '/room/$roomId'
+      path: '/room/$roomId'
+      fullPath: '/room/$roomId'
+      preLoaderRoute: typeof RoomRoomIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/clerk': {
@@ -120,22 +82,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoClerkRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ws/room/$roomId': {
-      id: '/ws/room/$roomId'
-      path: '/ws/room/$roomId'
-      fullPath: '/ws/room/$roomId'
-      preLoaderRoute: typeof WsRoomRoomIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DemoClerkRoute: DemoClerkRoute,
-  DemoTanstackQueryRoute: DemoTanstackQueryRoute,
-  WsIndexRoute: WsIndexRoute,
-  WsRoomRoomIdRoute: WsRoomRoomIdRoute,
+  RoomRoomIdRoute: RoomRoomIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

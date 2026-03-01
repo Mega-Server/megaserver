@@ -4,7 +4,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
 
-export const Route = createFileRoute("/ws/room/$roomId")({
+export const Route = createFileRoute("/room/room/$roomId")({
   component: RouteComponent,
 });
 
